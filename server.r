@@ -1,79 +1,58 @@
-library(shiny)
-library(shinyjs)
+library(DBI)
 library(DT)
-library(RPostgreSQL)
-library(pool)
+#library(shiny)
+library(shinyjs)
 library(dplyr)
 library(stringr)
 library(readxl)
 
-# Connect to the database
-# ----
-pool <- dbPool(
-  drv = dbDriver("PostgreSQL"),
-  dbname = "test",
-  host = "huber-vm01.embl.de",
-  user = "admin",
-  password = "bloodcancertumorbank"
-)
+db <- dbConnect(RSQLite::SQLite(), "rlims.db")
 
-onStop(function() {
-  poolClose(pool)
-})
-
-# ----
-
-
-# Get the tables
-# ----
-
-# 1. Function to get the column names
 getColNames <- function(table) {
-  qyr <- paste0("SELECT * FROM information_schema.columns WHERE table_name = '", table, "';")
-  colNames <- dbGetQuery(pool, qyr)$column_name
+  colNames <- dbListFields(db, table)
 }
 
 # 2. Function to get the tables with exchanged fk
 getTbl <- function(table) {
   if (table == "patient") {
-    query <- dbGetQuery(pool, "SELECT p.patid, p.patpatientid, p.patpseudoid, pr.prjname, d.dgnname, p.patsex, p.patcomment
+    query <- dbGetQuery(db, "SELECT p.patid, p.patpatientid, p.patpseudoid, pr.prjname, d.dgnname, p.patsex, p.patcomment
                         FROM patient p
                         LEFT OUTER JOIN diagnosis d ON p.patdgnidref = d.dgnid
                         LEFT OUTER JOIN project pr ON p.patprjidref = pr.prjid
                         ORDER BY p.patpatientid;")
   } else if (table == "sample") {
-    query <- dbGetQuery(pool, "SELECT s.smpid, p.patpatientid, s.smpsampleid, s.smpsampledate, s.smpdatereceived,  
+    query <- dbGetQuery(db, "SELECT s.smpid, p.patpatientid, s.smpsampleid, s.smpsampledate, s.smpdatereceived,  
                         s.smpleukocytes, s.smppblymphocytes, s.smpcomment
                         FROM sample s
                         LEFT OUTER JOIN patient p ON s.smppatidref = p.patid
                         ORDER BY p.patpatientid, s.smpsampleid;")
   } else if (table == "analysis") {
-    query <- dbGetQuery(pool,"SELECT a.anlid, s.smpsampleid, o.anuname, a.anlstatus, a.anldate, a.anlrun, a.anltype, a.anlcomment
+    query <- dbGetQuery(db,"SELECT a.anlid, s.smpsampleid, o.anuname, a.anlstatus, a.anldate, a.anlrun, a.anltype, a.anlcomment
                         FROM analysis a 
                         LEFT OUTER JOIN sample s ON a.anlsmpidref = s.smpid
                         LEFT OUTER JOIN analysislookup o ON a.anlanuidref = o.anuid
-                        ORDER BY anuname;")
+                        ORDER BY s.smpsampleid, o.anuname;")
   } else if (table == "analysislookup") {
-    query <- dbGetQuery(pool,"SELECT anuid, anuname, anudescription
+    query <- dbGetQuery(db,"SELECT anuid, anuname, anudescription
                         FROM analysislookup
                         ORDER BY anuname;")
   } else if (table == "aliquot") {
-    query <- dbGetQuery(pool,"SELECT a.alqid, s.smpsampleid, a.alqdate, users1.usrinitials AS prepared_by, a.alqsampletype, a.alqcelltype, a.alqcellnumber, a.alqvolume, a.alqconc, a.alqstored, a.alqfreezer, a.alqtower, a.alqbox, a.alqposition, a.alqempty, a.alqdateused, users2.usrinitials AS used_by, a.alqpurpose, a.alqcomment 
+    query <- dbGetQuery(db,"SELECT a.alqid, s.smpsampleid, a.alqdate, users1.usrinitials AS prepared_by, a.alqsampletype, a.alqcelltype, a.alqcellnumber, a.alqvolume, a.alqconc, a.alqstored, a.alqfreezer, a.alqtower, a.alqbox, a.alqposition, a.alqempty, a.alqdateused, users2.usrinitials AS used_by, a.alqpurpose, a.alqcomment 
                         FROM aliquot a
                         LEFT OUTER JOIN sample s ON a.alqsmpidref = s.smpid
                         LEFT OUTER JOIN users AS users1 ON a.alqusridref = users1.usrid 
                         LEFT OUTER JOIN users AS users2 ON a.alqusedusridref = users2.usrid
                         ORDER BY alqid;")
   } else if (table == "diagnosis") {
-    query <- dbGetQuery(pool,"SELECT dgnid, dgnname, dgnfullname
+    query <- dbGetQuery(db,"SELECT dgnid, dgnname, dgnfullname
                         FROM diagnosis
                         ORDER BY dgnname;")
   } else if (table == "project") {
-    query <- dbGetQuery(pool, "SELECT prjid, prjname, prjdisease, prjmaterial, prjfirstname, prjlastname, prjdepartment, prjinstitute, prjcity, prjcountry, prjdescription
+    query <- dbGetQuery(db, "SELECT prjid, prjname, prjdisease, prjmaterial, prjfirstname, prjlastname, prjdepartment, prjinstitute, prjcity, prjcountry, prjdescription
                         FROM project
                         ORDER BY prjname;")
   } else if (table == "users") {
-    query <- dbGetQuery(pool, "SELECT usrid, usrinitials, usrfirstname, usrlastname, usrposition, usrstartdate, usrenddate 
+    query <- dbGetQuery(db, "SELECT usrid, usrinitials, usrfirstname, usrlastname, usrposition, usrstartdate, usrenddate 
                         FROM users 
                         ORDER BY usrinitials;")
   }
@@ -88,7 +67,7 @@ tblSmp_fields <- getColNames("sample")
 tblSmp_names <- c("AutoID", "Patient ID", "Sample ID", "Date", "Received on", "Leukocyte count", "%-PB-lymphocytes", "Comment")
 tblSmp_matchNames <- as.data.frame(cbind(Fields = tblSmp_fields, Names = tblSmp_names))
 
-tblAlq_fields <- getColNames("aliquot")
+tblAlq_fields <- names(getTbl("aliquot"))
 tblAlq_names <- c("AutoID", "Sample ID", "Prepared on", "Prepared by", "Sample type", "Cell type", "Cell number", "Volume", "Concentration", "Stored at", "Freezer", "Tower/Rack", "Box", "Position", "Empty", "Used on", "Used by", "Used for", "Comment")
 tblAlq_matchNames <- as.data.frame(cbind(Fields = tblAlq_fields, Names = tblAlq_names))
 
@@ -117,27 +96,18 @@ tbl_matchNames$Fields <- as.character(tbl_matchNames$Fields)
 tbl_matchNames$Names <- as.character(tbl_matchNames$Names)
 # ----
 
+## Reactive tables that can be updated when new data is added
+rvtbl <- reactiveValues()
+rvtbl$pat <- getTbl("patient")
+rvtbl$smp <- getTbl("sample")
+rvtbl$alq <- getTbl("aliquot")
+rvtbl$anl <- getTbl("analysis")
+rvtbl$dgn <- getTbl("diagnosis")
+rvtbl$prj <- getTbl("project")
+rvtbl$usr <- getTbl("users")
+rvtbl$anu <- getTbl("analysislookup")
 
 function(input, output, session) {
-  
-  # General functions
-  
-  # Close the shiny app when browser window is closed
-  session$onSessionEnded(function() {
-    stopApp()
-  })
-  
-  ## Reactive tables that can be updated when new data is added
-  rvtbl <- reactiveValues()
-  rvtbl$pat <- getTbl("patient")
-  rvtbl$smp <- getTbl("sample")
-  rvtbl$alq <- getTbl("aliquot")
-  rvtbl$anl <- getTbl("analysis")
-  rvtbl$dgn <- getTbl("diagnosis")
-  rvtbl$prj <- getTbl("project")
-  rvtbl$usr <- getTbl("users")
-  rvtbl$anu <- getTbl("analysislookup")
-  
   
   ## Define foreign key (fk) values
   fk <- reactiveValues(
@@ -193,8 +163,8 @@ function(input, output, session) {
   
   # Update input fields when row is selected
   updateInputsPat <- function(data, session) {
-    fk$patprjidref <- data[["patprjidref"]]
-    fk$patdgnidref <- data[["patdgnidref"]]
+    fk$patprjidref <- data[["prjname"]]
+    fk$patdgnidref <- data[["dgnname"]]
     updateNumericInput(session, "patid", value = as.integer(data[["patid"]]))
     updateTextInput(session, "patpatientid", value = data[["patpatientid"]])
     updateTextInput(session, "patpseudoid", value = data[["patpseudoid"]])
@@ -227,7 +197,7 @@ function(input, output, session) {
   
   # New patient
   observeEvent(input$newPat, {
-
+    
     pat <- rvtbl$pat
     
     # If no patient is in the database yet, insert P0001, then add up
@@ -261,9 +231,11 @@ function(input, output, session) {
   
   # DELETE a record after confirmation
   observeEvent(input$deletePatYes, {
-    query <- sprintf("DELETE FROM patient WHERE patid = '%s';",
+    deleteQuery <- sprintf("DELETE FROM patient WHERE patid = '%s';",
                      input$patid)
-    dbGetQuery(pool, query)
+    res <- dbSendQuery(db, deleteQuery)
+    res
+    dbClearResult(res)
     
     removeModal()
     resetInputPat()
@@ -278,7 +250,7 @@ function(input, output, session) {
     # Get all input values
     data <- sapply(getColNames("patient"), function(x) input[[x]], simplify = FALSE)
     data <- lapply(data, trimws, which = "both")
-
+    
     # Replace "" for NULL to define empty fields
     data[data == "" | is.na(data)] <- "NULL"
     
@@ -313,20 +285,25 @@ function(input, output, session) {
       insertValues <- paste0(unname(dataInsert), collapse = ", ")
       insertQuery <- sprintf("INSERT INTO %s (%s) VALUES (%s);", "patient", insertNames, insertValues)
       print(insertQuery)
-      dbGetQuery(pool, insertQuery)
-      } else {
-        updateData <- paste0(names(dataInsert), " = ", dataInsert, collapse = ", ")
-        updateAutoID <- paste0(names(dataAutoID), " = ", as.integer(dataAutoID) )
-        updateQuery <- sprintf("UPDATE %s SET %s WHERE %s ;", "patient", updateData, updateAutoID)
-        print(updateQuery)
-        dbGetQuery(pool, updateQuery)
-      } 
-
+      res <- dbSendQuery(db, insertQuery)
+      res
+      dbClearResult(res)
+      
+    } else {
+      updateData <- paste0(names(dataInsert), " = ", dataInsert, collapse = ", ")
+      updateAutoID <- paste0(names(dataAutoID), " = ", as.integer(dataAutoID) )
+      updateQuery <- sprintf("UPDATE %s SET %s WHERE %s ;", "patient", updateData, updateAutoID)
+      print(updateQuery)
+      res <- dbSendQuery(db, updateQuery)
+      res
+      dbClearResult(res)
+    } 
+    
     resetInputPat()
     rvtbl$pat <- getTbl("patient")
-
+    
   })
-
+  
   
   # Get output table
   output$tbl_pat <- DT::renderDataTable({
@@ -369,7 +346,7 @@ function(input, output, session) {
   
   # Generate sampleID for new samples
   observeEvent(input$newSmp, {
-
+    
     year <- format(Sys.Date(), "%y")
     smp <- rvtbl$smp
     
@@ -389,7 +366,7 @@ function(input, output, session) {
         newID <- paste0(year, "S0001")
       }
     } 
-
+    
     updateTextInput(session, "smpsampleid", value = newID)
     
     setInputFields <- c("smpid", "smpsampledate", "smpdatereceived", "smpleukocytes", "smppblymphocytes", "smpcomment")
@@ -412,7 +389,7 @@ function(input, output, session) {
   observeEvent(input$tbl_smp_rows_selected, {
     if( length(input$tbl_smp_rows_selected) > 0) {
       smp <- rvtbl$smp
-      smpFiltered <- filter(smp, smppatidref == input$patid)
+      smpFiltered <- filter(smp, patpatientid == input$patpatientid)
       dataSelected <- smpFiltered[input$tbl_smp_rows_selected, ]
       updateInputsSmp(dataSelected, session)
     }
@@ -445,8 +422,10 @@ function(input, output, session) {
   
   # DELETE a record after confirmation
   observeEvent(input$deleteSmpYes, {
-    query <- sprintf("DELETE FROM sample WHERE smpid = '%s'", input$smpid)
-    dbGetQuery(pool, query)
+    deleteQuery <- sprintf("DELETE FROM sample WHERE smpid = '%s'", input$smpid)
+    res <- dbSendQuery(db, deleteQuery)
+    res
+    dbClearResult(res)
     
     removeModal()
     resetInputSmp()
@@ -487,7 +466,7 @@ function(input, output, session) {
         data[i] <- paste0("'", data[i], "'")
       }  
     }
-
+    
     # Separate autoID
     dataInsert <- data[-1]
     dataAutoID <- data[1]
@@ -506,7 +485,9 @@ function(input, output, session) {
                              insertNames,
                              insertValues)
       print(insertQuery)
-      dbGetQuery(pool, insertQuery)
+      res <- dbSendQuery(db, insertQuery)
+      res
+      dbClearResult(res)
       
     } else {
       
@@ -518,7 +499,9 @@ function(input, output, session) {
                              updateData,
                              updateAutoID)
       print(updateQuery)
-      dbGetQuery(pool, updateQuery)
+      res <- dbSendQuery(db, updateQuery)
+      res
+      dbClearResult(res)
       
     }
     
@@ -533,11 +516,11 @@ function(input, output, session) {
     
     if( !is.na(input$patid) & nrow(smp) > 0 ) {
       smpSelected <- smp %>%
-        filter(smppatidref == input$patid)
+        filter(patpatientid == input$patpatientid)
       names(smpSelected) <- tbl_matchNames$Names[match(names(smpSelected),tbl_matchNames$Fields)]
       
       smpSelected
-
+      
     } else NULL
     
   }, selection = "single", filter = 'top', rownames = FALSE, options = list(columnDefs = list(list(visible = FALSE, targets = c(0)))))
@@ -553,7 +536,7 @@ function(input, output, session) {
   # Check if all mandatory fields are filled
   observe({ mandFilled(c("alqsmpidref", "alqsampletype"), "submitAlq", session) })
   observe({ mandFilled("alqid", "deleteAlq", session) })
-
+  
   ## Get reactive FK input field
   output$alqsmpidref <- renderUI({
     fk$alqsmpidref <- input$smpsampleid
@@ -573,8 +556,8 @@ function(input, output, session) {
   # Update input fields when row is selected
   updateInputsAlq <- function(data, session) {
     usr <- rvtbl$usr
-    fk$alqusridref <- usr$usrinitials[match(data[["alqusridref"]], usr$usrid)]
-    fk$alqusedusridref <- usr$usrinitials[match(data[["alqusedusridref"]], usr$usrid)]
+    fk$alqusridref <- data[["prepared_by"]]
+    fk$alqusedusridref <- data[["used_by"]]
     
     updateNumericInput(session, "alqid", value = as.integer(data[["alqid"]]))
     updateSelectInput(session, "alqsampletype", selected = data[["alqsampletype"]])
@@ -588,7 +571,7 @@ function(input, output, session) {
     updateNumericInput(session, "alqtower", value = data[["alqtower"]])
     updateNumericInput(session, "alqbox", value = data[["alqbox"]])
     updateTextInput(session, "alqposition", value = data[["alqposition"]])
-    updateCheckboxInput(session, "alqempty", "Empty", 0)
+    updateCheckboxInput(session, "alqempty", "Empty", data[["alqempty"]])
     updateDateInput(session, "alqdateused", value = data[["alqdateused"]])
     updateSelectInput(session, "alqpurpose", selected = data[["alqpurpose"]])
     updateTextInput(session, "alqcomment", value = data[["alqcomment"]])
@@ -597,7 +580,7 @@ function(input, output, session) {
   observeEvent(input$tbl_alq_rows_selected, {
     if( length(input$tbl_alq_rows_selected) > 0) {
       alq <- rvtbl$alq
-      alqFiltered <- filter(alq, alqsmpidref == input$smpid)
+      alqFiltered <- filter(alq, smpsampleid == input$smpsampleid)
       dataSelected <- alqFiltered[input$tbl_alq_rows_selected, ]
       updateInputsAlq(dataSelected, session)
     }
@@ -643,6 +626,7 @@ function(input, output, session) {
     } else {
       data[["alqdateused"]] <- as.character(data[["alqdateused"]])
     }
+    
     # If alqusridref is empty, it is returned as "" and exchanged with "NULL" from the function before. However, alqusedusridref returns as character(0) and will therefore be exchanged with this function.
     if( length(data[["alqusedusridref"]]) == 0 ) {
       data[["alqusedusridref"]] <- "NULL"
@@ -660,6 +644,9 @@ function(input, output, session) {
     if( data[["alqusedusridref"]] != "NULL" ) {
       data[["alqusedusridref"]] <- rvtbl$usr$usrid[match(data[["alqusedusridref"]], rvtbl$usr$usrinitials)]
     }
+    
+    # Exchange boolean value ("FALSE"/"TRUE") with integer 0/1
+    data[["alqempty"]] <- ifelse( data[["alqempty"]] == "FALSE", 0, 1) 
     
     # Add '' around filled text fields
     dataChr <- c("alqdate", "alqsampletype", "alqcelltype", "alqstored", "alqfreezer", "alqposition", "alqdateused", "alqpurpose", "alqcomment")
@@ -686,7 +673,9 @@ function(input, output, session) {
                              insertNames,
                              insertValues)
       print(insertQuery)
-      dbGetQuery(pool, insertQuery)
+      res <- dbSendQuery(db, insertQuery)
+      res
+      dbClearResult(res)
       
     } else {
       
@@ -698,28 +687,29 @@ function(input, output, session) {
                              updateData,
                              updateAutoID)
       print(updateQuery)
-      dbGetQuery(pool, updateQuery)
+      res <- dbSendQuery(db, updateQuery)
+      res
+      dbClearResult(res)
       
     }
     
-      fk$alqusedusridref <- ""
-      setInputFields <- c("alqid", "alqposition", "alqempty", "alqdateused",  "alqpurpose", "alqcomment")
-      for(i in setInputFields) {
-        reset(i)
-      }
+    fk$alqusedusridref <- ""
+    setInputFields <- c("alqid", "alqposition", "alqempty", "alqdateused",  "alqpurpose", "alqcomment")
+    for(i in setInputFields) {
+      reset(i)
+    }
     rvtbl$alq <- getTbl("aliquot")
-
+    
   })
   
   # Create output table
   output$tbl_alq <- DT::renderDataTable({
     
     alq <- rvtbl$alq
-    usr <- rvtbl$usr
     
     if( !is.na(input$smpid) & nrow(alq) > 0 ) {
       alqSelected <- alq %>%
-        filter(alqsmpidref == input$smpid) 
+        filter(smpsampleid == input$smpsampleid) 
       names(alqSelected) <- tbl_matchNames$Names[match(names(alqSelected),tbl_matchNames$Fields)]
       
       alqSelected
@@ -739,7 +729,7 @@ function(input, output, session) {
   
   ## UI output
   output$anlsmpidref <- renderUI({
-    tbl <- dbGetQuery(pool, "SELECT smpsampleid FROM sample;")
+    tbl <- dbGetQuery(db, "SELECT smpsampleid FROM sample;")
     values <- tbl[["smpsampleid"]]
     selectInput("anlsmpidref", "Select sample IDs", choices = c('', values), multiple = TRUE, selected = "")
   })
@@ -804,8 +794,8 @@ function(input, output, session) {
     anlUpload <- combine_samples()
     
     if(!is.null(anlUpload)) {
-      smp <- dbGetQuery(pool, "SELECT smpid, smpsampleid FROM sample;")
-      anu <- dbGetQuery(pool, "SELECT anuid, anuname FROM analysislookup;")
+      smp <- rvtbl$smp
+      anu <- rvtbl$anu
       
       if(all(anlUpload$sampleID %in% smp$smpsampleid)) {
         
@@ -820,7 +810,7 @@ function(input, output, session) {
         
         # Add '' around filled text fields
         anlUpload$anlstatus <- paste0("'", anlUpload$anlstatus, "'")
-
+        
         # Get input values
         anlUpload <- select(anlUpload, anlsmpidref, anlanuidref, anlstatus, anldate)
         insertNames <- paste0(names(anlUpload), collapse = ", ")
@@ -832,11 +822,15 @@ function(input, output, session) {
                                "analysis",
                                insertNames,
                                insertValues)
-        dbGetQuery(pool, insertQuery) # Run the insert query
+        print(insertQuery)
+        res <- dbSendQuery(db, insertQuery)
+        res
+        dbClearResult(res)
+        
         resetInputAnl() # Reset the input fields
         fk$anlpath <- 'reset'
-        rvtbl$anu <- getTbl("analysislookup")
-
+        rvtbl$anl <- getTbl("analysis")
+        
       } else {
         falseSampleID <- anlUpload$sampleID[!anlUpload$sampleID %in% smp$smpsampleid]
         showNotification(paste0("Error: The following sample IDs do not exist: ", paste0(falseSampleID, collapse = ", ")), type  = "error", duration = NULL)
@@ -861,11 +855,9 @@ function(input, output, session) {
   observe({ mandFilled(c("edit_anlsmpidref"), "submitEditAnl", session) })
   observe({ mandFilled("edit_anlid", "deleteEditAnl", session) })
   
-
+  
   # Get UI output
   output$edit_anlanuidref <- renderUI({
-    # When reactive table is updated (after delete or submit) ...
-    rvtbl$anu
     tbl <- rvtbl$anu
     values <- tbl[["anuname"]]
     selectInput("edit_anlanuidref", "Analysis", c("", values), selected = "")
@@ -875,10 +867,9 @@ function(input, output, session) {
   observeEvent(input$edit_tbl_anl_rows_selected, {
     if(length(input$edit_tbl_anl_rows_selected) > 0) {
       anl <- rvtbl$anl
-      anl$anlanuidref <- rvtbl$anu$anuname[match(anl$anlanuidref, rvtbl$anu$anuid)] 
-      anl_filtered <- filter(anl, anlanuidref == input$edit_anlanuidref, anlstatus == input$edit_filter_anlstatus)
+      anl_filtered <- filter(anl, anuname == input$edit_anlanuidref, anlstatus == input$edit_filter_anlstatus)
       anl_selected <- anl_filtered[input$edit_tbl_anl_rows_selected, ]
-
+      
       updateNumericInput(session, "edit_anlid", value = as.integer(anl_selected$anlid))
       updateTextInput(session, "edit_anlsmpidref", value = anl_selected$smpsampleid)
       fk$anlanuidref <- anl_selected$anuname
@@ -912,8 +903,11 @@ function(input, output, session) {
   
   # DELETE a record after confirmation
   observeEvent(input$deleteEditAnlYes, {
-    query <- sprintf("UPDATE analysis SET anldeleted = 'yes' WHERE anlid = '%s'", input$edit_anlid)
-    dbGetQuery(pool, query)
+    deleteQuery <- sprintf("DELETE FROM analysis WHERE anlid = '%s'", input$edit_anlid)
+    res <- dbSendQuery(db, deleteQuery)
+    res
+    dbClearResult(res)
+    
     removeModal()
     resetInputEditAnl()
     rvtbl$anl <- getTbl("analysis")
@@ -947,11 +941,11 @@ function(input, output, session) {
     
     # Exchange fk values with auto-ID
     ## Sample table
-    dataSmp <- dbGetQuery(pool, "SELECT smpid, smpsampleid FROM sample;")
+    dataSmp <- dbGetQuery(db, "SELECT smpid, smpsampleid FROM sample;")
     data[names(data)=="anlsmpidref"] <- as.character(dataSmp$smpid[match(data[names(data)=="anlsmpidref"], dataSmp$smpsampleid)])
     
     ## Analysis lookup table
-    dataAnu <- dbGetQuery(pool, "SELECT anuid, anuname FROM analysislookup;")
+    dataAnu <- dbGetQuery(db, "SELECT anuid, anuname FROM analysislookup;")
     data[names(data) == "anlanuidref"] <- as.character(dataAnu$anuid[match(data[names(data)=="anlanuidref"], dataAnu$anuname)])
     
     # Get filled fields without autoID and construct INSERT/UPDATE SQL syntax
@@ -964,10 +958,13 @@ function(input, output, session) {
                            "analysis",
                            updateData,
                            updateAutoID)
-      dbGetQuery(pool, updateQuery)
-      resetInputEditAnl()
-      rvtbl$anl <- getTbl("analysis")
-
+    res <- dbSendQuery(db, updateQuery)
+    res
+    dbClearResult(res)
+    
+    resetInputEditAnl()
+    rvtbl$anl <- getTbl("analysis")
+    
   })
   
   # Get analysis table
@@ -976,8 +973,8 @@ function(input, output, session) {
       anl <- rvtbl$anl
       
       anl_filtered <- anl %>%
-        filter(anlanuidref == input$edit_anlanuidref, anlstatus == input$edit_filter_anlstatus) %>%
-        arrange(anlsmpidref)
+        filter(anuname == input$edit_anlanuidref, anlstatus == input$edit_filter_anlstatus) %>%
+        arrange(smpsampleid, anuname)
       names(anl_filtered) <- tbl_matchNames$Names[match(names(anl_filtered), tbl_matchNames$Fields)]
       return(anl_filtered)
     } else NULL
@@ -1029,13 +1026,15 @@ function(input, output, session) {
   
   ### DELETE a record after confirmation
   observeEvent(input$deleteDgnYes, {
-    #pat <- dbGetQuery(pool, "SELECT * FROM patient;")
+    
     if(input$dgnid %in% rvtbl$pat$patdgnidref) {
       showNotification("Error: There are still patients assigned to this diagnosis! Change the diagnosis for all patients with this diagnosis first.", type = "error", duration = NULL)
     } else {
-      query <- sprintf("DELETE FROM diagnosis WHERE dgnid = '%s'",
+      deleteQuery <- sprintf("DELETE FROM diagnosis WHERE dgnid = '%s'",
                        input$dgnid)
-      dbGetQuery(pool, query)
+      res <- dbSendQuery(db, deleteQuery)
+      res
+      dbClearResult(res)
       
       # Update diagnosis table
       rvtbl$dgn <- getTbl("diagnosis")
@@ -1067,7 +1066,7 @@ function(input, output, session) {
         dataInsert[i] <- paste0("'", dataInsert[i], "'")
       }  
     }
-
+    
     # Get all data to check update values
     dataSelected <- rvtbl$dgn[input$tbl_dgn_rows_selected, ]
     
@@ -1081,14 +1080,18 @@ function(input, output, session) {
         insertNames <- paste0(names(dataInsert), collapse = ", ")
         insertValues <- paste0(unname(dataInsert), collapse = ", ")
         insertQuery <- sprintf("INSERT INTO %s (%s) VALUES (%s);", "diagnosis", insertNames, insertValues)
-        dbGetQuery(pool, insertQuery)
+        res <- dbSendQuery(db, insertQuery)
+        res
+        dbClearResult(res)
       }
     } else {
       if( !toupper(data[["dgnname"]]) %in% toupper(rvtbl$dgn$dgnname) | nrow(rvtbl$dgn[rvtbl$dgn$dgnid == input$dgnid & toupper(rvtbl$dgn$dgnname) == toupper(input$dgnname), ]) > 0) {
         updateData <- paste0(names(dataInsert), " = ", dataInsert, collapse = ", ")
         updateAutoID <- paste0(names(dataAutoID), " = ", as.integer(dataAutoID) )
         updateQuery <- sprintf("UPDATE %s SET %s WHERE %s ;", "diagnosis", updateData, updateAutoID)
-        dbGetQuery(pool, updateQuery)
+        res <- dbSendQuery(db, updateQuery)
+        res
+        dbClearResult(res)
         
       } else {
         showNotification("Error: This value alread exists!", type  = "error", duration = NULL)
@@ -1099,7 +1102,7 @@ function(input, output, session) {
     
     shinyjs::reset("setDgn")
     rvtbl$dgn <- getTbl("diagnosis")
-
+    
   })
   
   # Create output table
@@ -1161,14 +1164,17 @@ function(input, output, session) {
   
   ## DELETE a record after confirmation
   observeEvent(input$deletePrjYes, {
-
+    
     if(input$prjid %in% rvtbl$pat$patprjidref) {
       showNotification("Error: There are still patients assigned to this project!", type = "error", duration = NULL)
       removeModal()
     } else {
-      query <- sprintf("DELETE FROM project WHERE prjid = '%s'",
+      deleteQuery <- sprintf("DELETE FROM project WHERE prjid = '%s'",
                        input$prjid)
-      dbGetQuery(pool, query)
+      res <- dbSendQuery(db, deleteQuery)
+      res
+      dbClearResult(res)
+      
       removeModal()
       shinyjs::reset("setPrj")
       rvtbl$prj <- getTbl("project")
@@ -1213,7 +1219,9 @@ function(input, output, session) {
         insertValues <- paste0(unname(dataInsert), collapse = ", ")
         insertQuery <- sprintf("INSERT INTO %s (%s) VALUES (%s);", "project", insertNames, insertValues)
         print(insertQuery)
-        dbGetQuery(pool, insertQuery)
+        res <- dbSendQuery(db, insertQuery)
+        res
+        dbClearResult(res)
         
       }
     } else {
@@ -1223,7 +1231,9 @@ function(input, output, session) {
         updateAutoID <- paste0(names(dataAutoID), " = ", as.integer(dataAutoID) )
         updateQuery <- sprintf("UPDATE %s SET %s WHERE %s ;", "project", updateData, updateAutoID)
         print(updateQuery)
-        dbGetQuery(pool, updateQuery)
+        res <- dbSendQuery(db, updateQuery)
+        res
+        dbClearResult(res)
         
       } else {
         showNotification("Error: This value alread exists!", type  = "error", duration = NULL)
@@ -1233,7 +1243,7 @@ function(input, output, session) {
     
     shinyjs::reset("setPrj")
     rvtbl$prj <- getTbl("project")
-
+    
   })
   
   
@@ -1278,7 +1288,7 @@ function(input, output, session) {
     }
   })
   
-
+  
   # RESET values
   observeEvent(input$resetUsr, {
     enable("usrinitials")
@@ -1302,16 +1312,19 @@ function(input, output, session) {
       showNotification("Error: There are records assigned to this user! Remove or change all records, before you can delete this user.", type = "error", duration = NULL)
       removeModal()
     } else {
-      query <- sprintf("DELETE FROM users WHERE usrid = '%s'",
+      deleteQuery <- sprintf("DELETE FROM users WHERE usrid = '%s'",
                        input$usrid)
-      dbGetQuery(pool, query)
+      res <- dbSendQuery(db, deleteQuery)
+      res
+      dbClearResult(res)
+      
       removeModal()
       shinyjs::reset("setUsr")
       rvtbl$usr <- getTbl("users")
     }
-
+    
   })
-
+  
   
   # INSERT/UPDATE a record
   observeEvent(input$submitUsr, {
@@ -1321,7 +1334,7 @@ function(input, output, session) {
     
     # Replace "" for NULL to define empty fields
     data[data == "" | is.na(data) ] <- "NULL"
-
+    
     # Remove empty date field
     if( length(data[["usrstartdate"]]) == 0 ) {
       data[["usrstartdate"]] <- "NULL"
@@ -1363,7 +1376,9 @@ function(input, output, session) {
         insertValues <- paste0(unname(dataInsert), collapse = ", ")
         insertQuery <- sprintf("INSERT INTO %s (%s) VALUES (%s);", "users", insertNames, insertValues)
         print(insertQuery)
-        dbGetQuery(pool, insertQuery)
+        res <- dbSendQuery(db, insertQuery)
+        res
+        dbClearResult(res)
         enable("usrinitials")
         
       }
@@ -1374,9 +1389,11 @@ function(input, output, session) {
         updateAutoID <- paste0(names(dataAutoID), " = ", as.integer(dataAutoID) )
         updateQuery <- sprintf("UPDATE %s SET %s WHERE %s ;", "users", updateData, updateAutoID)
         print(updateQuery)
-      dbGetQuery(pool, updateQuery)
-      enable("usrinitials")
-      
+        res <- dbSendQuery(db, updateQuery)
+        res
+        dbClearResult(res)
+        enable("usrinitials")
+        
       } else {
         showNotification("Error: This value alread exists!", type = "error", duration = NULL)
         updateInputsUsr(dataSelected, session)
@@ -1385,7 +1402,7 @@ function(input, output, session) {
     
     shinyjs::reset("setUsr")
     rvtbl$usr <- getTbl("users")
-
+    
   })
   
   # Create output table
@@ -1463,7 +1480,9 @@ function(input, output, session) {
         insertValues <- paste0(unname(dataInsert), collapse = ", ")
         insertQuery <- sprintf("INSERT INTO %s (%s) VALUES (%s);", "analysislookup", insertNames, insertValues)
         print(insertQuery)
-        dbGetQuery(pool, insertQuery)
+        res <- dbSendQuery(db, insertQuery)
+        res
+        dbClearResult(res)
         
       }
     } else {
@@ -1472,7 +1491,9 @@ function(input, output, session) {
         updateAutoID <- paste0(names(dataAutoID), " = ", as.integer(dataAutoID) )
         updateQuery <- sprintf("UPDATE %s SET %s WHERE %s ;", "analysislookup", updateData, updateAutoID)
         print(updateQuery)
-        dbGetQuery(pool, updateQuery)
+        res <- dbSendQuery(db, updateQuery)
+        res
+        dbClearResult(res)
       } else {
         showNotification("Error: This value alread exists!", type  = "error", duration = NULL)
         updateInputsAnu(dataSelected, session)
@@ -1496,9 +1517,11 @@ function(input, output, session) {
   
   # DELETE a record after confirmation
   observeEvent(input$deleteAnuYes, {
-    query <- sprintf("DELETE FROM analysislookup WHERE anuid = '%s'",
+    deleteQuery <- sprintf("DELETE FROM analysislookup WHERE anuid = '%s'",
                      input$anuid)
-    dbGetQuery(pool, query)
+    res <- dbSendQuery(db, deleteQuery)
+    res
+    dbClearResult(res)
     removeModal()
     shinyjs::reset("setAnu")
     rvtbl$anu <- getTbl("analysislookup")
@@ -1523,5 +1546,6 @@ function(input, output, session) {
   )
   
   # ----
+  
   
 }

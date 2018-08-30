@@ -1,4 +1,4 @@
-library(shiny)
+#library(shiny)
 library(shinyjs)
 
 # Input values for alqpurpose
@@ -39,7 +39,7 @@ fluidPage(
     
     title = "Tumorbank", inverse = TRUE, id = "tabs",
     
-    tabPanel("Tumorbank",
+    tabPanel("Biobank",
              #####
              tabsetPanel(
                
@@ -61,6 +61,7 @@ fluidPage(
                               column(6, selectInput("patsex", "Gender", choices = c("", "f", "m") ))
                             ),
                             textInput("patcomment", "Comment", NULL),
+                            h6("Mandatory fields are marked with *."),
                             br(),
                             fluidRow(
                               column(3, actionButton("submitPat", "Submit", class = "btn-primary")),
@@ -94,6 +95,7 @@ fluidPage(
                               column(6, numericInput("smppblymphocytes", "%-PB-lymphocytes", NULL, min = 0, max = 100, step = 1))
                             ),
                             textInput("smpcomment", "Comment", NULL),
+                            h6("Mandatory fields are marked with *."),
                             fluidRow(
                               column(3, actionButton("submitSmp", "Submit", class = "btn-primary") ),
                               column(3, actionButton("resetSmp", "Reset", class = "btn-success") ),
@@ -127,7 +129,7 @@ fluidPage(
                                        condition = "input.alqsampletype == 'bone marrow' || input.alqsampletype == 'peripheral blood' || input.alqsampletype == 'lymph node' || input.alqsampletype == 'DNA' || input.alqsampletype == 'RNA'", 
                                        selectInput("alqcelltype", "Cell type", choices = c('', 'MNC viable', 'MNC pellet', 'CD19pos', 'CD19neg', 'CD3neg', 'CD3pos', 'granulocytes'))
                                      )
-                                     ),
+                              ),
                               column(6,
                                      conditionalPanel(
                                        condition = "input.alqsampletype == 'bone marrow' || input.alqsampletype == 'peripheral blood' || input.alqsampletype == 'lymph node'", 
@@ -148,7 +150,7 @@ fluidPage(
                                        condition = "input.alqsampletype == 'DNA' || input.alqsampletype == 'RNA'",
                                        numericInput("alqconc", "Conc(ng/ul)", NULL)
                                      )
-                                     )
+                              )
                             ),
                             hr(),
                             fluidRow(
@@ -161,7 +163,7 @@ fluidPage(
                               column(4, selectInput("alqposition", "Position", choices = c("", sort(paste0(rep(LETTERS[1:9], times = 9), rep(1:9, each = 9)))), selected = ""))
                             ),
                             checkboxInput("alqempty", "Empty", 0),
-
+                            
                             hr(),
                             checkboxInput("alqused", "Show used fields"),
                             conditionalPanel(
@@ -175,6 +177,7 @@ fluidPage(
                             
                             hr(),
                             textInput("alqcomment", "Comment", NULL),
+                            h6("Mandatory fields are marked with *."),
                             br(),
                             fluidRow(
                               column(4, actionButton("submitAlq", "Submit", class = "btn-primary") ),
@@ -213,7 +216,8 @@ fluidPage(
                                      column(6, selectInput("anltype", "Type (C=control;T=tumor)", choices = c("", "C", "T", "C/T"), selected = "")))
                           ),
                           textInput("anlcomment", "Comment", ""),
-                          
+                          h6("Mandatory fields are marked with *."),
+
                           br(),
                           fluidRow(
                             column(3, actionButton("submitAnl", "Submit", class = "btn-primary") ),
@@ -242,6 +246,7 @@ fluidPage(
                           textInput("edit_anlrun", "Run/Batch", ""),
                           selectInput("edit_anltype", "Type", choices = c("", "C", "T", "C/T"), selected = ""),
                           textInput("edit_anlcomment", "Comment", ""),
+                          h6("Mandatory fields are marked with *."),
                           
                           br(),
                           fluidRow(
@@ -279,15 +284,16 @@ fluidPage(
                               column(6)
                             ),
                             textInput("dgnfullname", "Full name", NULL),
+                            h6("Mandatory fields are marked with *."),
                             br(),
                             actionButton("submitDgn", "Submit", class = "btn-primary"),
                             actionButton("resetDgn", "Reset", class = "btn-success"),
                             actionButton("deleteDgn", "Delete", class = "btn-danger")
                           ),
                           mainPanel(br(), DT::dataTableOutput("tbl_dgn"))
-                          )
+                        )
                         # ----
-                        ),
+               ),
                
                tabPanel("Projects",
                         # ----
@@ -315,6 +321,7 @@ fluidPage(
                               column(6, textInput("prjcountry", "Country", NULL))
                             ),
                             textInput("prjdescription", "Description", NULL),
+                            h6("Mandatory fields are marked with *."),
                             br(),
                             fluidRow(
                               column(3, actionButton("submitPrj", "Submit", class = "btn-primary") ),
@@ -323,9 +330,9 @@ fluidPage(
                             )
                           ),
                           mainPanel(br(), DT::dataTableOutput("tbl_prj"))
-                          )
+                        )
                         # ----
-                        ),
+               ),
                
                tabPanel("Users",
                         # ----
@@ -347,6 +354,7 @@ fluidPage(
                               column(6, dateInput("usrstartdate", "Start date", "", format = "yyyy-mm-dd", weekstart = 1)),
                               column(6, dateInput("usrenddate", "End date", "", format = "yyyy-mm-dd", weekstart = 1) )
                             ),
+                            h6("Mandatory fields are marked with *."),
                             br(),
                             fluidRow(
                               column(3, actionButton("submitUsr", "Submit", class = "btn-primary") ),
@@ -355,9 +363,9 @@ fluidPage(
                             )
                           ),
                           mainPanel(br(), DT::dataTableOutput("tbl_usr"))
-                          )
+                        )
                         # ----
-                        ),
+               ),
                
                tabPanel("Analysis",
                         # ----
@@ -368,10 +376,11 @@ fluidPage(
                             br(),
                             numericInput("anuid", "Auto-ID", NULL),
                             fluidRow(
-                              column(6, textInput("anuname", "Analysis", "")),
+                              column(6, textInput("anuname", "Analysis*", "")),
                               column(6, uiOutput("anuusridref"))
                             ),
                             textInput("anudescription", "Description", ""),
+                            h6("Mandatory fields are marked with *."),
                             br(),
                             fluidRow(
                               column(3, actionButton("submitAnu", "Submit", class = "btn-primary") ),
@@ -382,12 +391,12 @@ fluidPage(
                           
                           mainPanel(br(), DT::dataTableOutput("tbl_anu"))
                           
-                          )
-                        # ----
                         )
+                        # ----
                )
              )
+    )
     
     
   ) # NavbarPage
-) # fluidPage
+      ) # fluidPage
