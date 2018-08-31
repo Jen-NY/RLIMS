@@ -5,4 +5,4 @@ This demo version uses a SQLite database, but it is recommended to set up a serv
 
 Download sqlite3, a command line program that allows to execute SQL code from the command line ( https://sqlite.org/download.html). You will also need the RSQLite package that is available on CRAN.
 
-The bash script rlims.sh is used to create the database.
+The bash script createDatabase.sh is used to create the database.
