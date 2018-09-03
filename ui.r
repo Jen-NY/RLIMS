@@ -51,7 +51,7 @@ fluidPage(
                             numericInput("patid", "Auto-ID", NULL),
                             fluidRow(
                               column(6, textInput("patpatientid", "Patient ID*", NULL)),
-                              column(6, textInput("patpseudoid", "HIPO ID", NULL))
+                              column(6, textInput("patpseudoid", "Pseudonym", NULL))
                             ),
                             fluidRow(
                               column(6, uiOutput("patprjidref")),
