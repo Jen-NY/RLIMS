@@ -1,8 +1,5 @@
 #!/bin/bash
 
-dgn=$(sqlite3 rlims.db "CREATE TABLE diagnosis (dgnid INTEGER PRIMARY KEY, dgnname VARCHAR(40) NOT NULL, dgnfullname VARCHAR(100))")
-
-
 prj=$(sqlite3 rlims.db "CREATE TABLE project
 (
 	prjid INTEGER PRIMARY KEY,
@@ -37,7 +34,8 @@ pat=$(sqlite3 rlims.db "CREATE TABLE patient
 	patpatientid VARCHAR(5) NOT NULL,
 	patpseudoid VARCHAR(20),
 	patprjidref INT REFERENCES project(prjid) ON DELETE RESTRICT ON UPDATE CASCADE,
-	patdgnidref INT REFERENCES diagnosis(dgnid) ON DELETE RESTRICT ON UPDATE CASCADE,
+	patdiagnosis VARCHAR(200),
+	patdiagnosissub VARCHAR(200),
 	patsex VARCHAR(4),
 	patcomment VARCHAR(200)
 );")
@@ -60,6 +58,7 @@ anu=$(sqlite3 rlims.db "CREATE TABLE analysislookup
 (
 	anuid INTEGER PRIMARY KEY,
 	anuname VARCHAR(20),
+	anucat VARCHAR(40),
 	anudescription text
 );")
 
@@ -88,7 +87,6 @@ alq=$(sqlite3 rlims.db "CREATE TABLE aliquot
 	alqcellnumber BIGINT,
 	alqvolume INT,
 	alqconc REAL,
-	alqstored VARCHAR(20),
   alqfreezer VARCHAR(20),
   alqtower INT,
   alqbox INT,

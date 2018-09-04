@@ -1,10 +1,12 @@
 library(DBI)
 library(DT)
-#library(shiny)
 library(shinyjs)
 library(dplyr)
 library(stringr)
 library(readxl)
+
+# Import the list of WHO diagnosis
+who <- read_excel("ICD-O-3.xlsx")
 
 db <- dbConnect(RSQLite::SQLite(), "rlims.db")
 
@@ -15,9 +17,8 @@ getColNames <- function(table) {
 # 2. Function to get the tables with exchanged fk
 getTbl <- function(table) {
   if (table == "patient") {
-    query <- dbGetQuery(db, "SELECT p.patid, p.patpatientid, p.patpseudoid, pr.prjname, d.dgnname, p.patsex, p.patcomment
+    query <- dbGetQuery(db, "SELECT p.patid, p.patpatientid, p.patpseudoid, pr.prjname, p.patdiagnosis, p.patdiagnosissub, p.patsex, p.patcomment
                         FROM patient p
-                        LEFT OUTER JOIN diagnosis d ON p.patdgnidref = d.dgnid
                         LEFT OUTER JOIN project pr ON p.patprjidref = pr.prjid
                         ORDER BY p.patpatientid;")
   } else if (table == "sample") {
@@ -33,20 +34,16 @@ getTbl <- function(table) {
                         LEFT OUTER JOIN analysislookup o ON a.anlanuidref = o.anuid
                         ORDER BY s.smpsampleid, o.anuname;")
   } else if (table == "analysislookup") {
-    query <- dbGetQuery(db,"SELECT anuid, anuname, anudescription
+    query <- dbGetQuery(db,"SELECT anuid, anuname, anucat, anudescription
                         FROM analysislookup
                         ORDER BY anuname;")
   } else if (table == "aliquot") {
-    query <- dbGetQuery(db,"SELECT a.alqid, s.smpsampleid, a.alqdate, users1.usrinitials AS prepared_by, a.alqsampletype, a.alqcelltype, a.alqcellnumber, a.alqvolume, a.alqconc, a.alqstored, a.alqfreezer, a.alqtower, a.alqbox, a.alqposition, a.alqempty, a.alqdateused, users2.usrinitials AS used_by, a.alqpurpose, a.alqcomment 
+    query <- dbGetQuery(db,"SELECT a.alqid, s.smpsampleid, a.alqdate, users1.usrinitials AS prepared_by, a.alqsampletype, a.alqcelltype, a.alqcellnumber, a.alqvolume, a.alqconc, a.alqfreezer, a.alqtower, a.alqbox, a.alqposition, a.alqempty, a.alqdateused, users2.usrinitials AS used_by, a.alqpurpose, a.alqcomment 
                         FROM aliquot a
                         LEFT OUTER JOIN sample s ON a.alqsmpidref = s.smpid
                         LEFT OUTER JOIN users AS users1 ON a.alqusridref = users1.usrid 
                         LEFT OUTER JOIN users AS users2 ON a.alqusedusridref = users2.usrid
                         ORDER BY alqid;")
-  } else if (table == "diagnosis") {
-    query <- dbGetQuery(db,"SELECT dgnid, dgnname, dgnfullname
-                        FROM diagnosis
-                        ORDER BY dgnname;")
   } else if (table == "project") {
     query <- dbGetQuery(db, "SELECT prjid, prjname, prjdisease, prjmaterial, prjfirstname, prjlastname, prjdepartment, prjinstitute, prjcity, prjcountry, prjdescription
                         FROM project
@@ -60,7 +57,7 @@ getTbl <- function(table) {
 
 # 3. Generate a dataframe that matches the DB column names with more readible column names.
 tblPat_fields <- getColNames("patient")
-tblPat_names <- c("AutoID", "Patient ID", "Pseudonym", "Project", "Diagnosis", "Gender", "Comment")
+tblPat_names <- c("AutoID", "Patient ID", "Pseudonym", "Project", "Diagnosis", "Diagnosis subtype", "Gender", "Comment")
 tblPat_matchNames <- as.data.frame(cbind(Fields = tblPat_fields, Names = tblPat_names))
 
 tblSmp_fields <- getColNames("sample")
@@ -68,7 +65,7 @@ tblSmp_names <- c("AutoID", "Patient ID", "Sample ID", "Date", "Received on", "L
 tblSmp_matchNames <- as.data.frame(cbind(Fields = tblSmp_fields, Names = tblSmp_names))
 
 tblAlq_fields <- names(getTbl("aliquot"))
-tblAlq_names <- c("AutoID", "Sample ID", "Prepared on", "Prepared by", "Sample type", "Cell type", "Cell number", "Volume", "Concentration", "Stored at", "Freezer", "Tower/Rack", "Box", "Position", "Empty", "Used on", "Used by", "Used for", "Comment")
+tblAlq_names <- c("AutoID", "Sample ID", "Prepared on", "Prepared by", "Sample type", "Cell type", "Cell number", "Volume", "Concentration", "Freezer", "Tower/Rack", "Box", "Position", "Empty", "Used on", "Used by", "Used for", "Comment")
 tblAlq_matchNames <- as.data.frame(cbind(Fields = tblAlq_fields, Names = tblAlq_names))
 
 tblAnl_fields <- getColNames("analysis")
@@ -76,12 +73,8 @@ tblAnl_names <- c("AutoID", "Sample ID", "Analysis", "Status", "Date", "Run", "S
 tblAnl_matchNames <- as.data.frame(cbind(Fields = tblAnl_fields, Names = tblAnl_names))
 
 tblAnu_fields <- getColNames("analysislookup")
-tblAnu_names <- c("AutoID", "Analysis", "Description")
+tblAnu_names <- c("AutoID", "Analysis", "Category", "Description")
 tblAnu_matchNames <- as.data.frame(cbind(Fields = tblAnu_fields, Names = tblAnu_names))
-
-tblDgn_fields <- getColNames("diagnosis")
-tblDgn_names <- c("AutoID", "Diagnosis", "Diagnosis full name")
-tblDgn_matchNames <- as.data.frame(cbind(Fields = tblDgn_fields, Names = tblDgn_names))
 
 tblPrj_fields <- getColNames("project")
 tblPrj_names <- c("AutoID", "Project", "Disease", "Material", "First name", "Last name", "Department", "Institute", "City", "Country", "Description")
@@ -91,7 +84,7 @@ tblUsr_fields <- getColNames("users")
 tblUsr_names <- c("AutoID", "Initials", "First name", "Last name", "Position", "Start date", "End date")
 tblUsr_matchNames <- as.data.frame(cbind(Fields = tblUsr_fields, Names = tblUsr_names))
 
-tbl_matchNames <- unique(rbind(tblPat_matchNames, tblSmp_matchNames, tblAnl_matchNames, tblAnu_matchNames, tblAlq_matchNames, tblDgn_matchNames, tblPrj_matchNames, tblUsr_matchNames))
+tbl_matchNames <- unique(rbind(tblPat_matchNames, tblSmp_matchNames, tblAnl_matchNames, tblAnu_matchNames, tblAlq_matchNames, tblPrj_matchNames, tblUsr_matchNames))
 tbl_matchNames$Fields <- as.character(tbl_matchNames$Fields)
 tbl_matchNames$Names <- as.character(tbl_matchNames$Names)
 # ----
@@ -102,7 +95,6 @@ rvtbl$pat <- getTbl("patient")
 rvtbl$smp <- getTbl("sample")
 rvtbl$alq <- getTbl("aliquot")
 rvtbl$anl <- getTbl("analysis")
-rvtbl$dgn <- getTbl("diagnosis")
 rvtbl$prj <- getTbl("project")
 rvtbl$usr <- getTbl("users")
 rvtbl$anu <- getTbl("analysislookup")
@@ -112,7 +104,7 @@ function(input, output, session) {
   ## Define foreign key (fk) values
   fk <- reactiveValues(
     # Reactive values used in patient table:
-    patprjidref = "", patdgnidref = "", 
+    patprjidref = "",  patdiagnosissub = "",
     # Reactive values used in sample table
     smppatidref = "",
     # Reactive values used in aliquot table
@@ -155,16 +147,30 @@ function(input, output, session) {
     selectInput("patprjidref", "Project*", c("", value), selected = fk$patprjidref)
   })
   
-  output$patdgnidref <- renderUI({
-    tbl <- rvtbl$dgn
-    value <- tbl[["dgnname"]]
-    selectInput("patdgnidref", "Diagnosis", c("", value), selected = fk$patdgnidref)
-  })
+  output$patdiagnosis <- renderUI({
+    value <- who$Label[who$Struct == "title"]
+    selectInput("patdiagnosis", "Diagnosis", c("", value))
+   })
   
+  output$patdiagnosissub <- renderUI({
+    
+    if(length(input$patdiagnosis > 0)) {
+      if(input$patdiagnosis == "") {
+        value <- ""
+      } else {
+        who_code <- subset(who, Label == input$patdiagnosis)
+        value <- c("", who$Label[who$Struct == "sub" & who$Code == who_code$Code])
+      } 
+    } else NULL
+    
+    selectInput("patdiagnosissub", "Diagnosis subtype", c(value))
+  })
+
   # Update input fields when row is selected
   updateInputsPat <- function(data, session) {
     fk$patprjidref <- data[["prjname"]]
-    fk$patdgnidref <- data[["dgnname"]]
+    updateSelectInput(session, "patdiagnosis", selected = data[["patdiagnosis"]])
+    updateSelectInput(session, "patdiagnosissub", selected = data[["patdiagnosissub"]])
     updateNumericInput(session, "patid", value = as.integer(data[["patid"]]))
     updateTextInput(session, "patpatientid", value = data[["patpatientid"]])
     updateTextInput(session, "patpseudoid", value = data[["patpseudoid"]])
@@ -182,10 +188,10 @@ function(input, output, session) {
   # RESET values
   resetInputPat <- function() {
     fk$patprjidref <- ""
-    fk$patdgnidref <- ""
+    fk$patdiagnosis <- ""
     updateTextInput(session, "patprjidref", value = fk$patprjidref)
-    updateTextInput(session, "patdgnidref", value = fk$patdgnidref)
-    setInputFields <- c("patid", "patpatientid", "patpseudoid", "patsex", "patcomment")
+    updateSelectInput(session, "patdiagnosis", selected = fk$patdiagnosis)
+    setInputFields <- c("patid", "patpatientid", "patpseudoid", "patdiagnosissub", "patsex", "patcomment")
     for(i in setInputFields) {
       reset(i)
     }
@@ -197,7 +203,6 @@ function(input, output, session) {
   
   # New patient
   observeEvent(input$newPat, {
-    
     pat <- rvtbl$pat
     
     # If no patient is in the database yet, insert P0001, then add up
@@ -209,8 +214,7 @@ function(input, output, session) {
     
     # Empty all fields
     fk$patprjidref <- ""
-    fk$patdgnidref <- ""
-    setInputFields <- c("patid", "patpseudoid", "patsex", "patcomment")
+    setInputFields <- c("patid", "patpseudoid", "patdiagnosis", "patdiagnosissub", "patsex", "patcomment")
     for(i in setInputFields) {
       reset(i)
     }
@@ -255,7 +259,7 @@ function(input, output, session) {
     data[data == "" | is.na(data)] <- "NULL"
     
     # Add '' around filled text fields
-    dataChr <- c("patpatientid", "patpseudoid", "patsex", "patcomment")
+    dataChr <- c("patpatientid", "patpseudoid", "patdiagnosis", "patdiagnosissub", "patsex", "patcomment")
     for(i in dataChr) {
       if(data[i] != "NULL") {
         data[i] <- paste0("'", data[i], "'")
@@ -266,10 +270,7 @@ function(input, output, session) {
     if(data[names(data) == "patprjidref"] != "NULL") {
       data[names(data) == "patprjidref"] <- rvtbl$prj$prjid[rvtbl$prj$prjname == data[["patprjidref"]] ]
     } 
-    if(data[names(data) == "patdgnidref"] != "NULL") {
-      data[names(data) == "patdgnidref"] <- rvtbl$dgn$dgnid[rvtbl$dgn$dgnname == data[["patdgnidref"]] ]
-    } 
-    
+
     # Separate autoID
     dataInsert <- data[-1]
     dataAutoID <- data[1]
@@ -284,7 +285,7 @@ function(input, output, session) {
       insertNames <- paste0(names(dataInsert), collapse = ", ")
       insertValues <- paste0(unname(dataInsert), collapse = ", ")
       insertQuery <- sprintf("INSERT INTO %s (%s) VALUES (%s);", "patient", insertNames, insertValues)
-      print(insertQuery)
+      #print(insertQuery)
       res <- dbSendQuery(db, insertQuery)
       res
       dbClearResult(res)
@@ -319,6 +320,7 @@ function(input, output, session) {
   }, selection = "single", filter = 'top', rownames = FALSE, options = list(pageLength = 25, lengthMenu = c(10, 25, 50, 100), autoWidth = TRUE, columnDefs = list(list(visible = FALSE, targets = 0))))
   
   # ----
+  
   
   ## Sample
   # ----
@@ -566,7 +568,6 @@ function(input, output, session) {
     updateNumericInput(session, "alqcellnumber", value = data[["alqcellnumber"]] )
     updateNumericInput(session, "alqvolume", value = data[["alqvolume"]] )
     updateNumericInput(session, "alqconc", value = data[["alqconc"]] )
-    updateSelectInput(session, "alqstored", selected = data[["alqstored"]])
     updateSelectInput(session, "alqfreezer", selected = data[["alqfreezer"]])
     updateNumericInput(session, "alqtower", value = data[["alqtower"]])
     updateNumericInput(session, "alqbox", value = data[["alqbox"]])
@@ -649,7 +650,7 @@ function(input, output, session) {
     data[["alqempty"]] <- ifelse( data[["alqempty"]] == "FALSE", 0, 1) 
     
     # Add '' around filled text fields
-    dataChr <- c("alqdate", "alqsampletype", "alqcelltype", "alqstored", "alqfreezer", "alqposition", "alqdateused", "alqpurpose", "alqcomment")
+    dataChr <- c("alqdate", "alqsampletype", "alqcelltype", "alqfreezer", "alqposition", "alqdateused", "alqpurpose", "alqcomment")
     for(i in dataChr) {
       if(data[i] != "NULL") {
         data[i] <- paste0("'", data[i], "'")
@@ -985,135 +986,6 @@ function(input, output, session) {
   
   # More
   
-  # Diagnosis
-  # ----
-  
-  # Disable fields
-  disable("dgnid")
-  hide("dgnid")
-  
-  # Check if all mandatory fields are filled
-  observe({ mandFilled("dgnname", "submitDgn", session) })
-  observe({ mandFilled("dgnid", "deleteDgn", session) })
-  
-  # Update input fields when row is selected
-  updateInputsDgn <- function(data, session) {
-    updateNumericInput(session, "dgnid", value = as.integer(data[["dgnid"]]))
-    updateTextInput(session, "dgnname", value = data[["dgnname"]])
-    updateTextInput(session, "dgnfullname", value = data[["dgnfullname"]])
-  }
-  observeEvent(input$tbl_dgn_rows_selected, {
-    if (length(input$tbl_dgn_rows_selected) > 0) {
-      dataSelected <- rvtbl$dgn[input$tbl_dgn_rows_selected, ]
-      updateInputsDgn(dataSelected, session)
-    }
-  })
-  
-  ## RESET values
-  observeEvent(input$resetDgn, {
-    shinyjs::reset("setDgn")
-  })
-  
-  ## DELETE a record
-  ### Show modal when button deletePat is clicked
-  observeEvent(input$deleteDgn, {
-    showModal(modalDialog(
-      h4("Do you really want to delete this record?"),
-      
-      footer = tagList(modalButton("No"),
-                       actionButton("deleteDgnYes", "Yes"))))
-  })
-  
-  ### DELETE a record after confirmation
-  observeEvent(input$deleteDgnYes, {
-    
-    if(input$dgnid %in% rvtbl$pat$patdgnidref) {
-      showNotification("Error: There are still patients assigned to this diagnosis! Change the diagnosis for all patients with this diagnosis first.", type = "error", duration = NULL)
-    } else {
-      deleteQuery <- sprintf("DELETE FROM diagnosis WHERE dgnid = '%s'",
-                       input$dgnid)
-      res <- dbSendQuery(db, deleteQuery)
-      res
-      dbClearResult(res)
-      
-      # Update diagnosis table
-      rvtbl$dgn <- getTbl("diagnosis")
-      shinyjs::reset("setDgn")
-    }
-    removeModal()
-    
-  })
-  
-  
-  # INSERT/UPDATE a record
-  observeEvent(input$submitDgn, {
-    
-    # Get input data and trim whitespaces
-    data <- sapply(getColNames("diagnosis"), function(x) input[[x]], simplify = FALSE)
-    data <- lapply(data, trimws, which = "both")
-    
-    # Replace "" for NULL to define empty fields
-    data[data == "" | is.na(data)] <- "NULL"
-    
-    # Separate auto-ID
-    dataInsert <- data[-1]
-    dataAutoID <- data[1]
-    
-    # Add '' around filled text fields
-    dataChr <- c("dgnname", "dgnfullname")
-    for(i in dataChr) {
-      if(dataInsert[i] != "NULL") {
-        dataInsert[i] <- paste0("'", dataInsert[i], "'")
-      }  
-    }
-    
-    # Get all data to check update values
-    dataSelected <- rvtbl$dgn[input$tbl_dgn_rows_selected, ]
-    
-    # INSERT values, if autoID == "NULL", else UPDATE
-    if( dataAutoID == "NULL" ) {
-      
-      if( toupper(data[["dgnname"]]) %in% toupper(rvtbl$dgn$dgnname) | toupper(data[["dgnname"]]) %in% rvtbl$dgn$dgnname) {
-        showNotification("Error: This value alread exists!", type  = "error", duration = NULL)
-        updateInputsDgn(dataSelected, session)
-      } else {
-        insertNames <- paste0(names(dataInsert), collapse = ", ")
-        insertValues <- paste0(unname(dataInsert), collapse = ", ")
-        insertQuery <- sprintf("INSERT INTO %s (%s) VALUES (%s);", "diagnosis", insertNames, insertValues)
-        res <- dbSendQuery(db, insertQuery)
-        res
-        dbClearResult(res)
-      }
-    } else {
-      if( !toupper(data[["dgnname"]]) %in% toupper(rvtbl$dgn$dgnname) | nrow(rvtbl$dgn[rvtbl$dgn$dgnid == input$dgnid & toupper(rvtbl$dgn$dgnname) == toupper(input$dgnname), ]) > 0) {
-        updateData <- paste0(names(dataInsert), " = ", dataInsert, collapse = ", ")
-        updateAutoID <- paste0(names(dataAutoID), " = ", as.integer(dataAutoID) )
-        updateQuery <- sprintf("UPDATE %s SET %s WHERE %s ;", "diagnosis", updateData, updateAutoID)
-        res <- dbSendQuery(db, updateQuery)
-        res
-        dbClearResult(res)
-        
-      } else {
-        showNotification("Error: This value alread exists!", type  = "error", duration = NULL)
-        updateInputsDgn(dataSelected, session)
-        
-      }
-    }
-    
-    shinyjs::reset("setDgn")
-    rvtbl$dgn <- getTbl("diagnosis")
-    
-  })
-  
-  # Create output table
-  output$tbl_dgn <- DT::renderDataTable({
-    tbl <- rvtbl$dgn
-    names(tbl) <- tbl_matchNames$Names[match(names(tbl),tbl_matchNames$Fields)]
-    tbl
-  }, select = "single", filter = "top", rownames = FALSE, options = list(columnDefs = list(list(visible = FALSE, targets = 0))) )
-  
-  # ----
-  
   
   # Project
   # ----
@@ -1431,6 +1303,7 @@ function(input, output, session) {
   updateInputsAnu <- function(data, session) {
     updateNumericInput(session, "anuid", value = as.integer(data[["anuid"]]))
     updateTextInput(session, "anuname", value = data[["anuname"]])
+    updateSelectInput(session, "anucat", selected = data[["anucat"]])
     updateTextInput(session, "anudescription", value = data[["anudescription"]])
   }
   
@@ -1456,7 +1329,7 @@ function(input, output, session) {
     dataAutoID <- data[1]
     
     # Add '' around filled text fields
-    dataChr <- c("anuname", "anudescription")
+    dataChr <- c("anuname", "anucat", "anudescription")
     for(i in dataChr) {
       if(dataInsert[i] != "NULL") {
         dataInsert[i] <- paste0("'", dataInsert[i], "'")
@@ -1530,7 +1403,7 @@ function(input, output, session) {
   
   # RESET values
   observeEvent(input$resetAnu, {
-    setInputFields <- c("anuid", "anuname", "anudescription")
+    setInputFields <- c("anuid", "anuname", "anucat", "anudescription")
     for(i in setInputFields) {
       reset(i)
     }

@@ -1,5 +1,5 @@
-#library(shiny)
 library(shinyjs)
+library(readxl)
 
 # Input values for alqpurpose
 alqpurpose <- c("DNA extraction",
@@ -22,6 +22,8 @@ alqpurpose <- c("DNA extraction",
                 "MACS",
                 "sent",
                 "unknown")
+
+
 
 fluidPage(
   
@@ -55,11 +57,10 @@ fluidPage(
                             ),
                             fluidRow(
                               column(6, uiOutput("patprjidref")),
-                              column(6, uiOutput("patdgnidref"))
+                              column(6,  selectInput("patsex", "Gender", choices = c("", "f", "m") ))
                             ),
-                            fluidRow(
-                              column(6, selectInput("patsex", "Gender", choices = c("", "f", "m") ))
-                            ),
+                            uiOutput("patdiagnosis"),
+                            uiOutput("patdiagnosissub"),
                             textInput("patcomment", "Comment", NULL),
                             h6("Mandatory fields are marked with *."),
                             br(),
@@ -154,13 +155,12 @@ fluidPage(
                             ),
                             hr(),
                             fluidRow(
-                              column(6, selectInput("alqstored", "Stored at", choices = c("", "USZ", "NCT", "USZ", "OMZ"), selected = "")),
-                              column(6, selectInput("alqfreezer", "Freezer", choices = c("", "-20°C_1", "-80°C_1", "N2"), selected = ""))
+                              column(6, selectInput("alqfreezer", "Freezer", choices = c("", "-20°C_1", "-80°C_1", "N2"), selected = "")),
+                              column(6, numericInput("alqtower", "Tower/Rack", NULL))
                             ),
                             fluidRow(
-                              column(4, numericInput("alqtower", "Tower/Rack", NULL)),
-                              column(4, numericInput("alqbox", "Box", NULL)),
-                              column(4, selectInput("alqposition", "Position", choices = c("", sort(paste0(rep(LETTERS[1:9], times = 9), rep(1:9, each = 9)))), selected = ""))
+                              column(6, numericInput("alqbox", "Box", NULL)),
+                              column(6, selectInput("alqposition", "Position", choices = c("", sort(paste0(rep(LETTERS[1:9], times = 9), rep(1:9, each = 9)))), selected = ""))
                             ),
                             checkboxInput("alqempty", "Empty", 0),
                             
@@ -272,29 +272,7 @@ fluidPage(
              br(),
              
              tabsetPanel(
-               tabPanel("Diagnosis",
-                        # ----
-                        sidebarLayout(
-                          sidebarPanel(
-                            id = "setDgn", # Needed to re-set input values to default
-                            br(),
-                            numericInput("dgnid", "Auto-ID", NULL),
-                            fluidRow(
-                              column(6, textInput("dgnname", "Diagnosis*", NULL)),
-                              column(6)
-                            ),
-                            textInput("dgnfullname", "Full name", NULL),
-                            h6("Mandatory fields are marked with *."),
-                            br(),
-                            actionButton("submitDgn", "Submit", class = "btn-primary"),
-                            actionButton("resetDgn", "Reset", class = "btn-success"),
-                            actionButton("deleteDgn", "Delete", class = "btn-danger")
-                          ),
-                          mainPanel(br(), DT::dataTableOutput("tbl_dgn"))
-                        )
-                        # ----
-               ),
-               
+
                tabPanel("Projects",
                         # ----
                         sidebarLayout(
@@ -377,7 +355,7 @@ fluidPage(
                             numericInput("anuid", "Auto-ID", NULL),
                             fluidRow(
                               column(6, textInput("anuname", "Analysis*", "")),
-                              column(6, uiOutput("anuusridref"))
+                              column(6, selectInput("anucat", "Category", choices = c("", "DNA sequencing", "RNA sequencing", "Methylation array", "SNP array", "Drug screen")))
                             ),
                             textInput("anudescription", "Description", ""),
                             h6("Mandatory fields are marked with *."),
