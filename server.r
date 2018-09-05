@@ -160,10 +160,13 @@ function(input, output, session) {
       } else {
         who_code <- subset(who, Label == input$patdiagnosis)
         value <- c("", who$Label[who$Struct == "sub" & who$Code == who_code$Code])
+        selectInput("patdiagnosissub", "Diagnosis subtype", c(value))
+        
       } 
-    } else NULL
+    } else {
+      selectInput("patdiagnosissub", "Diagnosis subtype", choices = "")
+    }
     
-    selectInput("patdiagnosissub", "Diagnosis subtype", c(value))
   })
 
   # Update input fields when row is selected

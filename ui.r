@@ -4,25 +4,17 @@ library(readxl)
 # Input values for alqpurpose
 alqpurpose <- c("DNA extraction",
                 "RNA extraction",
+                "Sequencing",
+                "Methylation array",
+                "Cytogenetic array",
                 "WB",
                 "Protein mass spectrometry",
-                "Metabolism",
-                "Drug screen-Pilot67",
-                "Drug screen-IC50",
-                "Drug screen-VP5C1",
-                "Drug screen-EMBL stepI",
-                "Drug screen-EMBL stepII",
-                "Drug screen-Synergy",
-                "Drug screen-Phenotype 1000",
-                "Drug screen-Cytokine",
-                "Drug screen-Tri12 Combi",
-                "ncRNA screen",
+                "Drug screen-Pilot",
+                "Drug screen-Main",
                 "cell culture",
-                "FACS viability",
                 "MACS",
                 "sent",
                 "unknown")
-
 
 
 fluidPage(
