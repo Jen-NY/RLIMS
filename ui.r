@@ -1,5 +1,6 @@
 library(shinyjs)
 library(readxl)
+library(plotly)
 
 # Input values for alqpurpose
 alqpurpose <- c("DNA extraction",
@@ -107,11 +108,11 @@ fluidPage(
                         
                         sidebarLayout(
                           sidebarPanel(
-                            numericInput("alqid", "Auto-ID", NULL),
                             fluidRow(
-                              column(6, uiOutput("alqsmpidref")),
-                              column(6, selectInput("alqsampletype", "Sample type*", choices = c('', 'bone marrow', 'peripheral blood', 'lymph node', 'serum', 'saliva', 'DNA', 'RNA', 'protein'), selected = ''))
+                              column(6, numericInput("alqid", "Auto-ID", NULL)),
+                              column(6, uiOutput("alqsmpidref"))
                             ),
+                            selectInput("alqsampletype", "Sample type*", choices = c('', 'bone marrow', 'peripheral blood', 'lymph node', 'serum', 'saliva', 'DNA', 'RNA', 'protein'), selected = ''),
                             fluidRow(
                               column(6, dateInput("alqdate", "Prepared on", "", format = "yyyy-mm-dd", weekstart = 1)),
                               column(6, uiOutput("alqusridref"))
@@ -146,16 +147,18 @@ fluidPage(
                               )
                             ),
                             hr(),
-                            fluidRow(
-                              column(6, selectInput("alqfreezer", "Freezer", choices = c("", "-20°C_1", "-80°C_1", "N2"), selected = "")),
-                              column(6, numericInput("alqtower", "Tower/Rack", NULL))
-                            ),
-                            fluidRow(
-                              column(6, numericInput("alqbox", "Box", NULL)),
-                              column(6, selectInput("alqposition", "Position", choices = c("", sort(paste0(rep(LETTERS[1:9], times = 9), rep(1:9, each = 9)))), selected = ""))
-                            ),
-                            checkboxInput("alqempty", "Empty", 0),
                             
+                            # Aliquot storage
+                            uiOutput("alqbox"),
+                            conditionalPanel(
+                              condition = "input.alqbox != ''",
+                              plotlyOutput("alq_boxlayout")
+                            ),
+                            fluidRow(
+                              column(6, disabled(numericInput("alqposition", "Position", NULL))),
+                              column(6, checkboxInput("alqempty", "Empty", 0))
+                            ),
+
                             hr(),
                             checkboxInput("alqused", "Show used fields"),
                             conditionalPanel(
@@ -363,7 +366,34 @@ fluidPage(
                           
                         )
                         # ----
+               ),
+               
+               tabPanel("Storage", value = "storage",
+                        # ----
+                        h3("Enter a new box"),
+                        
+                        sidebarLayout(
+                          
+                          sidebarPanel(
+                            numericInput("stoid", "Auto-ID", NULL),
+                            textInput("stofreezer", "Freezer*", NULL),
+                            selectInput("stotype", "Type", choices = c("", "4°C", "-20°C", "-80°C", "LN2") ),
+                            numericInput("stotower", "Tower/Rack*", NULL),
+                            numericInput("stobox", "Box*", NULL),
+                            selectInput("stolayout", "Layout*", choices = c("", "9x9", "10x10")),
+                            br(),
+                            fluidRow(
+                              column(3, actionButton("submitSto", "Submit", class = "btn-primary") ),
+                              column(3, actionButton("resetSto", "Reset", class = "btn-success") ),
+                              column(3, actionButton("deleteSto", "Delete", class = "btn-danger") )
+                            )
+                            
+                          ),
+                          mainPanel(br(), DT::dataTableOutput("tbl_sto"))
+                        )
+                        # ----
                )
+               
              )
     )
     

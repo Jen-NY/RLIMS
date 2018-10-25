@@ -75,6 +75,15 @@ anl=$(sqlite3 rlims.db "CREATE TABLE analysis
 	anlcomment VARCHAR(100)
 );")
 
+sro=$(sqlite3 rlims.db "CREATE TABLE storage
+(
+	stoid INTEGER PRIMARY KEY,
+	stofreezer VARCHAR(20),
+	stotype VARCHAR(20),
+	stotower INT,
+	stobox INT,
+	stolayout VARCHAR(20)
+);")
 
 alq=$(sqlite3 rlims.db "CREATE TABLE aliquot
 (
@@ -87,10 +96,7 @@ alq=$(sqlite3 rlims.db "CREATE TABLE aliquot
 	alqcellnumber BIGINT,
 	alqvolume INT,
 	alqconc REAL,
-  alqfreezer VARCHAR(20),
-  alqtower INT,
-  alqbox INT,
-  alqposition VARCHAR(20),
+	alqstorage VARCHAR(20),
 	alqempty BOOLEAN,
 	alqdateused VARCHAR(10),
 	alqusedusridref INT REFERENCES users(usrid) ON UPDATE CASCADE ON DELETE RESTRICT,

@@ -4,6 +4,8 @@ library(shinyjs)
 library(dplyr)
 library(stringr)
 library(readxl)
+library(plotly)
+library(ggplot2)
 
 # Import the list of WHO diagnosis
 who <- read_excel("ICD-O-3.xlsx")
@@ -37,8 +39,11 @@ getTbl <- function(table) {
     query <- dbGetQuery(db,"SELECT anuid, anuname, anucat, anudescription
                         FROM analysislookup
                         ORDER BY anuname;")
+  } else if (table == "storage") {
+    query <- dbGetQuery(db, "SELECT stoid, stofreezer, stotype, stotower, stobox, stolayout
+                        FROM storage;")
   } else if (table == "aliquot") {
-    query <- dbGetQuery(db,"SELECT a.alqid, s.smpsampleid, a.alqdate, users1.usrinitials AS prepared_by, a.alqsampletype, a.alqcelltype, a.alqcellnumber, a.alqvolume, a.alqconc, a.alqfreezer, a.alqtower, a.alqbox, a.alqposition, a.alqempty, a.alqdateused, users2.usrinitials AS used_by, a.alqpurpose, a.alqcomment 
+    query <- dbGetQuery(db,"SELECT a.alqid, s.smpsampleid, a.alqdate, users1.usrinitials AS prepared_by, a.alqsampletype, a.alqcelltype, a.alqcellnumber, a.alqvolume, a.alqconc, a.alqbox, a.alqposition, a.alqempty, a.alqdateused, users2.usrinitials AS used_by, a.alqpurpose, a.alqcomment 
                         FROM aliquot a
                         LEFT OUTER JOIN sample s ON a.alqsmpidref = s.smpid
                         LEFT OUTER JOIN users AS users1 ON a.alqusridref = users1.usrid 
@@ -64,8 +69,12 @@ tblSmp_fields <- getColNames("sample")
 tblSmp_names <- c("AutoID", "Patient ID", "Sample ID", "Date", "Received on", "Leukocyte count", "%-PB-lymphocytes", "Comment")
 tblSmp_matchNames <- as.data.frame(cbind(Fields = tblSmp_fields, Names = tblSmp_names))
 
+tblSto_fields <- getColNames("storage")
+tblSto_names <- c("AutoID", "Freezer", "Type", "Tower/Rack", "Box", "Layout")
+tblSto_matchNames <- as.data.frame(cbind(Fields = tblSto_fields, Names = tblSto_names))
+
 tblAlq_fields <- names(getTbl("aliquot"))
-tblAlq_names <- c("AutoID", "Sample ID", "Prepared on", "Prepared by", "Sample type", "Cell type", "Cell number", "Volume", "Concentration", "Freezer", "Tower/Rack", "Box", "Position", "Empty", "Used on", "Used by", "Used for", "Comment")
+tblAlq_names <- c("AutoID", "Sample ID", "Prepared on", "Prepared by", "Sample type", "Cell type", "Cell number", "Volume", "Concentration", "Box", "Position", "Empty", "Used on", "Used by", "Used for", "Comment")
 tblAlq_matchNames <- as.data.frame(cbind(Fields = tblAlq_fields, Names = tblAlq_names))
 
 tblAnl_fields <- getColNames("analysis")
@@ -93,6 +102,7 @@ tbl_matchNames$Names <- as.character(tbl_matchNames$Names)
 rvtbl <- reactiveValues()
 rvtbl$pat <- getTbl("patient")
 rvtbl$smp <- getTbl("sample")
+rvtbl$sto <- getTbl("storage")
 rvtbl$alq <- getTbl("aliquot")
 rvtbl$anl <- getTbl("analysis")
 rvtbl$prj <- getTbl("project")
@@ -532,6 +542,7 @@ function(input, output, session) {
   
   
   # ----
+
   
   ## Aliquot
   # -----
@@ -558,6 +569,14 @@ function(input, output, session) {
     selectInput("alqusedusridref", "Used by", c("", usr), selected = fk$alqusedusridref)
   })
   
+  # Select a box
+  output$alqbox <- renderUI({
+    df <- rvtbl$sto
+    df$values <- paste0(df$stofreezer, "_", df$stotype, "_T", df$stotower, "_B", df$stobox)
+    values <- df[["values"]]
+    selectInput("alqbox", "Select a box", choices = c("", values), selected = "")
+  })
+  
   # Update input fields when row is selected
   updateInputsAlq <- function(data, session) {
     usr <- rvtbl$usr
@@ -571,10 +590,8 @@ function(input, output, session) {
     updateNumericInput(session, "alqcellnumber", value = data[["alqcellnumber"]] )
     updateNumericInput(session, "alqvolume", value = data[["alqvolume"]] )
     updateNumericInput(session, "alqconc", value = data[["alqconc"]] )
-    updateSelectInput(session, "alqfreezer", selected = data[["alqfreezer"]])
-    updateNumericInput(session, "alqtower", value = data[["alqtower"]])
-    updateNumericInput(session, "alqbox", value = data[["alqbox"]])
-    updateTextInput(session, "alqposition", value = data[["alqposition"]])
+    updateSelectInput(session, "alqbox", selected = data[["alqbox"]])
+    updateNumericInput(session, "alqposition", value = data[["alqposition"]] )
     updateCheckboxInput(session, "alqempty", "Empty", data[["alqempty"]])
     updateDateInput(session, "alqdateused", value = data[["alqdateused"]])
     updateSelectInput(session, "alqpurpose", selected = data[["alqpurpose"]])
@@ -653,7 +670,7 @@ function(input, output, session) {
     data[["alqempty"]] <- ifelse( data[["alqempty"]] == "FALSE", 0, 1) 
     
     # Add '' around filled text fields
-    dataChr <- c("alqdate", "alqsampletype", "alqcelltype", "alqfreezer", "alqposition", "alqdateused", "alqpurpose", "alqcomment")
+    dataChr <- c("alqdate", "alqsampletype", "alqcelltype", "alqbox", "alqdateused", "alqpurpose", "alqcomment")
     for(i in dataChr) {
       if(data[i] != "NULL") {
         data[i] <- paste0("'", data[i], "'")
@@ -698,12 +715,91 @@ function(input, output, session) {
     }
     
     fk$alqusedusridref <- ""
-    setInputFields <- c("alqid", "alqposition", "alqempty", "alqdateused",  "alqpurpose", "alqcomment")
+    setInputFields <- c("alqid", "alqbox", "alqempty", "alqdateused",  "alqpurpose", "alqcomment")
     for(i in setInputFields) {
       reset(i)
     }
     rvtbl$alq <- getTbl("aliquot")
     
+  })
+  
+  # Boxlayout
+  output$alq_boxlayout <- renderPlotly({
+    
+    ## If a box is selected, show the boxlayout plot 
+    if(length(input$alqbox) > 0) {
+      if(input$alqbox != "") {
+        
+        ## Generate an empty boxlist based on the box layout
+        ### Get the box info
+        sto <- rvtbl$sto
+        sto$box <- paste0(sto$stofreezer, "_", sto$stotype, "_T", sto$stotower, "_B", sto$stobox)
+        sto_box_selected <- filter(sto, box == input$alqbox)
+        
+        ### Get the box layout (9 or 10)
+        x <- as.integer(as.integer(strsplit(sto_box_selected$stolayout, "x")[[1]][[1]]))
+        
+        ### Generate the boxlist
+        boxlist <- data.frame(
+          rowID = factor(rep(LETTERS[1:x], each = x), levels = rev(LETTERS[1:x])), 
+          colID = factor(rep(1:x, times = x)), 
+          position = 1:x^2
+        )
+        
+        ## Filter aliquot list for aliquots that are in this box
+        alq <- rvtbl$alq
+        alq_filtered <- filter(alq, alqbox == input$alqbox)
+        
+        ## If the box is empty, draw an empty boxlayout plot
+        if( nrow(alq_filtered) == 0 ) {
+          
+          plot_boxlist <- boxlist
+          plot_boxlist$patient <- NA
+          plot_boxlist$sample <- NA
+          plot_boxlist$cells <- NA
+          plot_boxlist$alqempty <- 0
+          plot_boxlist$status <- "empty"
+          
+        } else {
+          ## If the box is not empty, format the aliquot table add the aliquot information to the box
+          ### Add patient and sample ID
+          smp <- rvtbl$smp 
+          alq_format <- merge(smp[,c("patpatientid", "smpsampleid")], alq_filtered, by = "smpsampleid")
+          ### Add combined information on the sample and cell type. This information will be shown along the patient and sample ID upon hovering over the plot.
+          alq_format <- alq_format %>%
+            mutate(cells = paste(alqsampletype, alqcelltype, alqcellnumber, sep = "_")) %>%
+            select(patient = patpatientid, sample = smpsampleid, cells, position = alqposition, alqempty)
+          plot_boxlist <- merge(boxlist, alq_format[,c("position", "patient", "sample", "cells", "alqempty")], by = "position", all.x=TRUE)
+          plot_boxlist$status <- factor(ifelse(is.na(plot_boxlist$alqempty), "empty", ifelse(plot_boxlist$alqempty == TRUE, "used", "filled")), levels = c("empty", "filled", "used"))            
+        }
+        
+        ## Generate the plot
+        p <- plot_boxlist %>%
+          ggplot(aes(colID, rowID, label2 = patient, label3 = sample, label4 = cells, key = position)) + 
+          geom_tile(aes(fill = status)) +
+          theme_bw() +
+          theme(panel.grid.major = element_blank()) +
+          theme(legend.title=element_blank()) +
+          scale_fill_manual(values = c("empty" = "grey", "filled" = "#F8766D", "used" = "#619CFF")) +
+          geom_hline(yintercept = seq(1.5, 9.5, by = 1), color = "white") +
+          geom_vline(xintercept = seq(1.5, 9.5, by = 1), color = "white") +
+          geom_text(aes(label=position), size = 3)
+        
+        ggplotly(p, tooltip = c("position", "status", "patient", "sample", "cells")) %>% 
+          config(displayModeBar = F) %>%
+          layout(legend = list(orientation = "h",x = -0.1, y =-0.2))
+        
+      } else plotly_empty(type = "scatter", mode = "none") %>% 
+        config(displayModeBar = F) 
+    } else plotly_empty(type = "scatter", mode = "none") %>% 
+      config(displayModeBar = F)  
+    
+  })
+  
+  observeEvent(event_data("plotly_click"), {
+    dat <- event_data("plotly_click")
+    pos <- as.integer(dat$key)
+    updateNumericInput(session, "alqposition", value = pos)
   })
   
   # Create output table
@@ -988,7 +1084,6 @@ function(input, output, session) {
   # ----
   
   # More
-  
   
   # Project
   # ----
@@ -1420,6 +1515,143 @@ function(input, output, session) {
     tbl
   }, selection = "single", rownames = FALSE, options = list(columnDefs = list(list(visible = FALSE, targets = 0)))
   )
+  
+  # ----
+  
+  
+  ## Storage
+  # ----
+  # Disable fields
+  disable("stoid")
+  hide("stoid")
+  
+  # Check if all mandatory fields are filled
+  observe({ mandFilled(c("stofreezer", "stotype", "stotower", "stobox", "stolayout"), "submitSto", session) })
+  observe({ mandFilled("stoid", "deleteSto", session) })
+  
+  # Update input fields when row is selected
+  observeEvent(input$tbl_sto_rows_selected, {
+    
+    if( length(input$tbl_sto_rows_selected) > 0) {
+      
+      sto <- rvtbl$sto
+      stoSelected <- sto[input$tbl_sto_rows_selected, ]
+      
+      updateNumericInput(session, "stoid", value = as.integer(stoSelected$stoid))
+      updateTextInput(session, "stofreezer", value = stoSelected$stofreezer)
+      updateSelectInput(session, "stotype", selected = stoSelected$stotype)
+      updateNumericInput(session, "stotower", value = as.numeric(stoSelected$stotower) )
+      updateNumericInput(session, "stobox", value = as.numeric(stoSelected$stobox) )
+      updateSelectInput(session, "stolayout", selected = stoSelected$stolayout)
+    }
+  })
+  
+  # RESET values
+  resetInputSto <- function() {
+    setInputFields <- c("stoid", "stofreezer", "stotype", "stotower", "stobox", "stolayout")
+    for(i in setInputFields) {
+      reset(i)
+    }
+  }
+  observeEvent(input$resetSto, {
+    resetInputSto()
+  })
+  
+  
+  # DELETE a record
+  ## Show modal when button deletePat is clicked
+  observeEvent(input$deleteSto, {
+    showModal(modalDialog(
+      h4("Do you really want to delete this record?"),
+      
+      footer = tagList(modalButton("No"),
+                       actionButton("deleteStoYes", "Yes"))))
+  })
+  
+  # DELETE a record after confirmation
+  observeEvent(input$deleteStoYes, {
+    deleteQuery <- sprintf("DELETE FROM storage WHERE stoid = '%s'", input$stoid)
+    res <- dbSendQuery(db, deleteQuery)
+    res
+    dbClearResult(res)
+    
+    removeModal()
+    resetInputSto()
+    # Update storage table
+    rvtbl$sto <- getTbl("storage")
+  })
+  
+  
+  # INSERT/UPDATE a record
+  
+  observeEvent(input$submitSto, {
+    
+    # Get all input values
+    data <- sapply(getColNames("storage"), function(x) input[[x]], simplify = FALSE)
+    data <- lapply(data, trimws, which = "both")
+    
+    # Replace "" for NULL to define empty fields
+    data[data == "" | is.na(data)] <- "NULL"
+    
+    # Add '' around filled text fields
+    dataChr <- c("stofreezer", "stotype", "stolayout")
+    for(i in dataChr) {
+      if(data[i] != "NULL") {
+        data[i] <- paste0("'", data[i], "'")
+      }  
+    }
+    
+    # Separate autoID
+    dataInsert <- data[-1]
+    dataAutoID <- data[1]
+    
+    # Get all data to check update values
+    dataSelected <- rvtbl$sto[input$tbl_sto_rows_selected, ]
+    
+    # INSERT values, if autoID == NA, else UPDATE
+    if( dataAutoID == "NULL" ) {
+      insertNames <- paste0(names(dataInsert), collapse = ", ")
+      insertValues <- paste0(unname(dataInsert), collapse = ", ")
+      insertQuery <- sprintf("INSERT INTO %s (%s) VALUES (%s);", 
+                             "storage",
+                             insertNames,
+                             insertValues)
+      print(insertQuery)
+      res <- dbSendQuery(db, insertQuery)
+      res
+      dbClearResult(res)
+      
+    } else {
+      updateData <- paste0(names(dataInsert), " = ", dataInsert, collapse = ", ")
+      updateAutoID <- paste0(names(dataAutoID), " = ", as.integer(dataAutoID))
+      updateQuery <- sprintf("UPDATE %s SET %s WHERE %s ;",
+                             "storage",
+                             updateData,
+                             updateAutoID)
+      print(updateQuery)
+      res <- dbSendQuery(db, updateQuery)
+      res
+      dbClearResult(res)
+      
+    }
+    
+    resetInputSto()
+    rvtbl$sto <- getTbl("storage")
+    
+  })
+  
+  # Create output table
+  output$tbl_sto <- DT::renderDataTable({
+    # When reactive table is updated (after delete or submit) ...
+    rvtbl$sto
+    
+    # ... get the table
+    df <- arrange(rvtbl$sto, stoid)
+    names(df) <- ifelse(names(df) %in% tbl_matchNames$Fields, tbl_matchNames$Names[match(names(df), tbl_matchNames$Fields)], names(df))
+    df 
+    
+  }, selection = "single", filter = 'top', rownames = FALSE, options = list(columnDefs = list(list(visible = FALSE, targets = c(0)))))
+  
   
   # ----
   
